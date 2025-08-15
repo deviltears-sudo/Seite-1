@@ -2,70 +2,127 @@
 <html lang="de">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>808 – Kapitel 1 · Seite 1</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
-  html,body{height:100%;margin:0;background:#000;overflow:hidden}
-  #viewer{width:100%;height:100%}
-  .nav{position:absolute;top:12px;right:12px;z-index:9;display:flex;gap:10px}
-  .nav button{
-    padding:8px 12px;background:rgba(0,0,0,.65);color:#fff;
-    border:1px solid rgba(255,255,255,.2);border-radius:6px;
-    font:14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial;cursor:pointer
-  }
+  html,body{height:100%;margin:0;background:#000;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  #stage{position:relative;width:100%;height:100%;overflow:hidden;touch-action:none}
+  #world{position:absolute;left:50%;top:50%;transform-origin:0 0;}
+  .tile{position:absolute;image-rendering:auto;user-select:none;pointer-events:none}
+  .nav{position:absolute;top:12px;right:12px;z-index:10;display:flex;gap:8px}
+  .nav button{padding:8px 12px;background:rgba(0,0,0,.65);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:6px;cursor:pointer}
   .nav button:hover{background:rgba(0,0,0,.85)}
+  .hint{position:absolute;left:12px;bottom:12px;color:#bbb;background:rgba(0,0,0,.45);padding:6px 8px;border-radius:6px;font-size:12px}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/openseadragon.min.js"></script>
 </head>
 <body>
-  <div id="viewer"></div>
+<div id="stage">
+  <div id="world"></div>
 
-  <!-- Umblättern -->
   <div class="nav">
     <button id="prev" title="Zurück (←)">← Zurück</button>
     <button id="next" title="Weiter (→)">Weiter →</button>
   </div>
 
+  <div class="hint">Mausrad: Zoomen · Ziehen: Verschieben · Doppelklick: auf Fenster einpassen</div>
+</div>
+
 <script>
-  // ==== Deine Einstellungen ====
-  const columns   = 4;      // 4 Spalten
-  const rows      = 3;      // 3 Zeilen
-  const tileW     = 1984;   // Kachelbreite (px)
-  const tileH     = 4000;   // Kachelhöhe (px)
-  const LINK_PREV = "LINK_ZUM_COVER_ODER_VORHERIGER_SEITE"; // <-- anpassen
-  const LINK_NEXT = "LINK_ZUR_NAECHSTEN_SEITE";             // <-- anpassen
+  // ======= Einstellungen =======
+  const columns = 4;         // 4 Spalten
+  const rows    = 3;         // 3 Zeilen
+  const tileW   = 1984;      // Kachelbreite (px)
+  const tileH   = 4000;      // Kachelhöhe (px)
+  const fileOf  = i => `0-${i}.png`; // Dateiname für Index i
 
-  // ==== Viewer (nur EIN Level; rechteckige Kacheln korrekt) ====
-  const viewer = OpenSeadragon({
-    id: "viewer",
-    prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/images/",
-    showNavigationControl: false,
-    gestureSettingsMouse: { clickToZoom:false, dblClickToZoom:true },
-    tileSources: {
-      // Gesamtgröße des Bildes (Breite = Spalten * Kachelbreite, Höhe = Zeilen * Kachelhöhe)
-      width:  columns * tileW,
-      height: rows    * tileH,
+  // Links (bitte URLs einsetzen)
+  const LINK_PREV = "LINK_ZUM_COVER_ODER_VORHERIGER_SEITE";
+  const LINK_NEXT = "LINK_ZUR_NAECHSTEN_SEITE";
 
-      // rechteckige Kachelgröße explizit angeben
-      tileWidth:  tileW,
-      tileHeight: tileH,
+  // ======= Tiles aufbauen =======
+  const world = document.getElementById('world');
+  const fullW = columns * tileW;
+  const fullH = rows    * tileH;
 
-      // nur EIN Level -> keine Levelwechsel, kein Springen
-      minLevel: 0,
-      maxLevel: 0,
-
-      // Kachel-URL nach Rasterposition
-      getTileUrl: function(level, x, y) {
-        const index = y * columns + x;    // Row-major
-        return `0-${index}.png`;          // Dateien: 0-0.png ... 0-11.png im selben Ordner
-      }
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < columns; x++) {
+      const idx = y * columns + x;
+      const img = new Image();
+      img.src = fileOf(idx);
+      img.className = 'tile';
+      img.style.left = (x * tileW) + 'px';
+      img.style.top  = (y * tileH) + 'px';
+      img.width  = tileW;
+      img.height = tileH;
+      world.appendChild(img);
     }
+  }
+
+  // ======= Zoom & Pan (ohne Springen) =======
+  const stage = document.getElementById('stage');
+  let scale = 1, minScale = 0.1, maxScale = 6;
+  let offsetX = 0, offsetY = 0; // Verschiebung vom Mittelpunkt aus
+
+  function applyTransform() {
+    world.style.transform = `translate(${offsetX - fullW/2}px, ${offsetY - fullH/2}px) scale(${scale})`;
+  }
+
+  function fitToScreen() {
+    const sx = stage.clientWidth  / fullW;
+    const sy = stage.clientHeight / fullH;
+    scale = Math.min(sx, sy);          // vollständiger Überblick
+    minScale = scale * 0.5;            // erlaubtes Herauszoomen
+    maxScale = scale * 8;              // erlaubtes Hineinzoomen
+    offsetX = 0; offsetY = 0;          // zentrieren
+    applyTransform();
+  }
+
+  // initial: voller Zoom-Out
+  window.addEventListener('load', fitToScreen);
+  window.addEventListener('resize', fitToScreen);
+
+  // Wheel-Zoom zum Mauszeiger
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = stage.getBoundingClientRect();
+    const mx = e.clientX - rect.left - rect.width/2 - offsetX;
+    const my = e.clientY - rect.top  - rect.height/2 - offsetY;
+
+    const delta = Math.sign(e.deltaY) * 0.1;
+    const prev = scale;
+    scale = Math.min(maxScale, Math.max(minScale, scale * (1 - delta)));
+
+    // Zoom um den Zeiger (einfaches Pivoting)
+    offsetX += mx * (1 - scale/prev);
+    offsetY += my * (1 - scale/prev);
+
+    applyTransform();
+  }, { passive:false });
+
+  // Drag/Pan
+  let dragging = false, lastX = 0, lastY = 0;
+  stage.addEventListener('mousedown', (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+  window.addEventListener('mouseup', () => dragging = false);
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    offsetX += (e.clientX - lastX);
+    offsetY += (e.clientY - lastY);
+    lastX = e.clientX; lastY = e.clientY;
+    applyTransform();
   });
 
-  // Start: kompletter Überblick (voller Zoom-Out)
-  viewer.addHandler("open", () => viewer.viewport.goHome(true));
+  // Doppelklick: wieder einpassen
+  stage.addEventListener('dblclick', fitToScreen);
 
-  // ==== Umblättern (Buttons + Pfeiltasten) ====
-  const goPrev = () => LINK_PREV && (location.href = LINK_PREV);
-  const goNext = () => LINK_NEXT && (location.href = LINK_NEXT);
-  document.getEleme
+  // ======= Umblättern =======
+  const prev = () => LINK_PREV && (location.href = LINK_PREV);
+  const next = () => LINK_NEXT && (location.href = LINK_NEXT);
+  document.getElementById('prev').onclick = prev;
+  document.getElementById('next').onclick = next;
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft')  prev();
+    if (e.key === 'ArrowRight') next();
+  });
+</script>
+</body>
+</html>
