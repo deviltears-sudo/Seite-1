@@ -1,130 +1,156 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>808 – Kapitel 1 · Seite 1</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>808 – Kapitel 1 · Seite</title>
 <style>
-  html,body{height:100%;margin:0;background:#111;overflow:hidden;font:14px system-ui,Segoe UI,Roboto,Arial}
-  #stage{position:relative;width:100%;height:100%;overflow:hidden;touch-action:none;background:repeating-conic-gradient(#181818 0 25%,#141414 0 50%) 50%/32px 32px}
-  #world{position:absolute;left:50%;top:50%;transform-origin:0 0;}
-  .tile{position:absolute;user-select:none;pointer-events:none;image-rendering:auto}
-  .ui{position:absolute;inset:12px 12px auto auto;z-index:10;display:flex;gap:8px}
-  .ui button{padding:8px 12px;background:#000a;color:#fff;border:1px solid #ffffff33;border-radius:6px;cursor:pointer}
-  .ui button:hover{background:#000d}
-  #status{position:absolute;left:12px;top:12px;background:#000a;color:#ddd;padding:6px 10px;border-radius:6px;z-index:10}
-  #error{position:absolute;left:12px;bottom:12px;background:#300;color:#f88;padding:8px 10px;border-radius:6px;z-index:10;display:none;max-width:60ch;white-space:pre-wrap}
+  html,body{height:100%;margin:0;background:#000;overflow:hidden;font:14px system-ui,Segoe UI,Roboto,Arial}
+  #stage{position:relative;width:100%;height:100%;overflow:hidden;touch-action:none;background:#0b0b0b}
+  /* optionales Schachbrett zum Debuggen – aus, wenn du willst:
+  #stage{background:repeating-conic-gradient(#111 0 25%,#0b0b0b 0 50%) 50%/24px 24px}
+  */
+  #world{position:absolute;left:50%;top:50%;transform-origin:50% 50%;}
+  .tile{position:absolute;display:block;user-select:none;pointer-events:none}
+  .hud{position:absolute;left:12px;bottom:12px;color:#ddd;background:#0009;padding:6px 10px;border-radius:6px}
+  .nav{position:absolute;top:12px;right:12px;display:flex;gap:8px}
+  .nav button{padding:8px 12px;background:#0009;color:#fff;border:1px solid #ffffff33;border-radius:6px;cursor:pointer}
+  .nav button:hover{background:#000c}
 </style>
 </head>
 <body>
 <div id="stage">
   <div id="world"></div>
-  <div id="status">Lade… 0/12</div>
-  <div class="ui">
-    <button id="prev" title="Zurück (←)">← Zurück</button>
-    <button id="next" title="Weiter (→)">Weiter →</button>
+  <div class="nav">
+    <button id="prev" title="←">← Zurück</button>
+    <button id="next" title="→">Weiter →</button>
   </div>
-  <div id="error"></div>
+  <div class="hud" id="hud">Lade… 0/12</div>
 </div>
 
 <script>
-  // === Einstellungen ===
-  const columns = 4, rows = 3;     // 4x3 Tiles
-  const tileW = 1984, tileH = 4000; // deine Kachelgröße
-  const fileOf = i => `0-${i}.png`; // Dateinamen
-  const LINK_PREV = "";             // ggf. URL einsetzen
-  const LINK_NEXT = "";             // ggf. URL einsetzen
+/* ===== Einstellungen ===== */
+const columns = 4;           // 4 Spalten
+const rows    = 3;           // 3 Zeilen
+const tileW   = 1984;        // Kachelbreite (px)
+const tileH   = 4000;        // Kachelhöhe  (px)
+const fileOf  = i => `0-${i}.png`; // Dateimuster
+const LINK_PREV = "";        // URL zur vorherigen Seite (oder "" lassen)
+const LINK_NEXT = "";        // URL zur nächsten Seite (oder "" lassen)
 
-  const stage = document.getElementById('stage');
-  const world = document.getElementById('world');
-  const statusEl = document.getElementById('status');
-  const errorEl = document.getElementById('error');
+/* ===== Grundgrößen ===== */
+const total = columns * rows;
+const fullW = columns * tileW;
+const fullH = rows    * tileH;
 
-  const total = columns * rows;
-  const fullW = columns * tileW, fullH = rows * tileH;
+const stage = document.getElementById('stage');
+const world = document.getElementById('world');
+const hud   = document.getElementById('hud');
 
-  // Preload + Fehlerreport
-  let loaded = 0, errors = [];
-  function updateStatus(){ statusEl.textContent = `Lade… ${loaded}/${total}`; }
-  function showError(){
-    if(!errors.length) return;
-    errorEl.style.display='block';
-    errorEl.textContent = "Fehler beim Laden dieser Dateien:\n" + errors.join("\n") +
-      "\n\nPrüfe: liegen die PNGs im selben Ordner wie index.html und heißen exakt so?";
+/* ===== Preload + Fehleranzeige ===== */
+let loaded = 0, failed = [];
+function updateHud(msg){
+  hud.textContent = msg ?? `Lade… ${loaded}/${total}`;
+}
+const imgs = Array.from({length: total}, (_,i)=>{
+  const img = new Image();
+  img.onload  = ()=>{ loaded++; updateHud(); if(loaded===total) init(); };
+  img.onerror = ()=>{ failed.push(fileOf(i)); loaded++; updateHud(); if(loaded===total) init(); };
+  img.src = fileOf(i);
+  return img;
+});
+
+/* ===== Szene aufbauen ===== */
+function init(){
+  if(failed.length){
+    hud.textContent = "Fehler:\n" + failed.join("\n");
+    hud.style.whiteSpace = 'pre-wrap';
+  } else {
+    hud.textContent = "Fertig – doppelklick zum Einpassen";
+    setTimeout(()=> hud.remove(), 1200);
   }
 
-  // Szenenaufbau erst NACH Preload
-  const imgs = Array.from({length: total}, (_,i)=>{
-    const img = new Image();
-    img.onload = ()=>{ loaded++; updateStatus(); if(loaded===total) initScene(); };
-    img.onerror = ()=>{ errors.push(fileOf(i)); loaded++; updateStatus(); showError(); };
-    img.src = fileOf(i);
-    return img;
-  });
+  // Container exakt so groß wie das Gesamtbild, zentriert
+  world.style.width  = fullW + 'px';
+  world.style.height = fullH + 'px';
+  world.style.transform = 'translate(-50%, -50%) scale(1)';
 
-  function initScene(){
-    statusEl.textContent = "Fertig";
-    setTimeout(()=>statusEl.remove(), 800);
-
-    // Tiles absolut positionieren
-    for(let y=0; y<rows; y++){
-      for(let x=0; x<columns; x++){
-        const i = y*columns+x;
-        const img = imgs[i];
-        img.className = 'tile';
-        img.style.left = (x*tileW) + 'px';
-        img.style.top  = (y*tileH) + 'px';
-        img.width = tileW; img.height = tileH;
-        world.appendChild(img);
-      }
+  // Tiles absolut einlegen
+  for(let y=0; y<rows; y++){
+    for(let x=0; x<columns; x++){
+      const i = y*columns + x;
+      const im = imgs[i];
+      im.className = 'tile';
+      im.style.left = (x*tileW) + 'px';
+      im.style.top  = (y*tileH) + 'px';
+      im.width  = tileW;
+      im.height = tileH;
+      world.appendChild(im);
     }
-    fitToScreen();
   }
+  fitToScreen();   // Start: voller Überblick
+}
 
-  // Zoom & Pan
-  let scale=1, minScale=0.1, maxScale=8, offX=0, offY=0;
-  function apply(){ world.style.transform = `translate(${offX-fullW/2}px, ${offY-fullH/2}px) scale(${scale})`; }
-  function fitToScreen(){
-    const sx = stage.clientWidth/fullW, sy = stage.clientHeight/fullH;
-    scale = Math.min(sx, sy);
-    minScale = scale*0.5; maxScale = scale*8;
-    offX = 0; offY = 0;
-    apply();
-  }
-  window.addEventListener('resize', fitToScreen);
+/* ===== Zoom & Pan (CSS transform) ===== */
+let scale = 1, minScale = 0.05, maxScale = 8;
+let offX = 0, offY = 0; // Versatz vom Mittelpunkt (px)
 
-  stage.addEventListener('wheel', e=>{
-    e.preventDefault();
-    const rect = stage.getBoundingClientRect();
-    const mx = e.clientX-rect.left-rect.width/2 - offX;
-    const my = e.clientY-rect.top -rect.height/2 - offY;
-    const prev = scale;
-    const factor = Math.pow(1.1, -Math.sign(e.deltaY));
-    scale = Math.max(minScale, Math.min(maxScale, scale*factor));
-    offX += mx*(1 - scale/prev);
-    offY += my*(1 - scale/prev);
-    apply();
-  }, {passive:false});
+function apply(){
+  world.style.transform = `translate(calc(-50% + ${offX}px), calc(-50% + ${offY}px)) scale(${scale})`;
+}
 
-  let dragging=false, lx=0, ly=0;
-  stage.addEventListener('mousedown', e=>{ dragging=true; lx=e.clientX; ly=e.clientY; });
-  window.addEventListener('mouseup', ()=> dragging=false);
-  window.addEventListener('mousemove', e=>{
-    if(!dragging) return;
-    offX += (e.clientX-lx); offY += (e.clientY-ly);
-    lx=e.clientX; ly=e.clientY; apply();
-  });
-  stage.addEventListener('dblclick', fitToScreen);
+function fitToScreen(){
+  const sx = stage.clientWidth  / fullW;
+  const sy = stage.clientHeight / fullH;
+  scale = Math.min(sx, sy);
+  minScale = Math.max(0.02, scale * 0.5);
+  maxScale = Math.max(2.0, scale * 8);
+  offX = 0; offY = 0;
+  apply();
+}
+window.addEventListener('resize', fitToScreen);
+stage.addEventListener('dblclick', fitToScreen);
 
-  // Blättern
-  const prev = ()=> LINK_PREV && (location.href = LINK_PREV);
-  const next = ()=> LINK_NEXT && (location.href = LINK_NEXT);
-  document.getElementById('prev').onclick = prev;
-  document.getElementById('next').onclick = next;
-  window.addEventListener('keydown', e=>{
-    if(e.key==='ArrowLeft') prev();
-    if(e.key==='ArrowRight') next();
-  });
+// Wheel-Zoom zum Mauszeiger
+stage.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const rect = stage.getBoundingClientRect();
+  const cx = rect.width/2 + offX;
+  const cy = rect.height/2 + offY;
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  const prev = scale;
+  const factor = Math.pow(1.1, -Math.sign(e.deltaY));
+  scale = Math.max(minScale, Math.min(maxScale, scale * factor));
+
+  // Zoom um Zeiger: Offset so verändern, dass der Punkt unter dem Cursor bleibt
+  offX += (mx - cx) * (1 - scale/prev);
+  offY += (my - cy) * (1 - scale/prev);
+  apply();
+}, {passive:false});
+
+// Drag/Pan
+let dragging=false, lx=0, ly=0;
+stage.addEventListener('mousedown', e=>{ dragging=true; lx=e.clientX; ly=e.clientY; });
+window.addEventListener('mouseup', ()=> dragging=false);
+window.addEventListener('mousemove', e=>{
+  if(!dragging) return;
+  offX += (e.clientX - lx);
+  offY += (e.clientY - ly);
+  lx = e.clientX; ly = e.clientY;
+  apply();
+});
+
+/* ===== Umblättern ===== */
+const goPrev = ()=> LINK_PREV && (location.href = LINK_PREV);
+const goNext = ()=> LINK_NEXT && (location.href = LINK_NEXT);
+document.getElementById('prev').onclick = goPrev;
+document.getElementById('next').onclick = goNext;
+window.addEventListener('keydown', e=>{
+  if(e.key==='ArrowLeft')  goPrev();
+  if(e.key==='ArrowRight') goNext();
+});
 </script>
 </body>
 </html>
